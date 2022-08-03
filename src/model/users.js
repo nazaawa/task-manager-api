@@ -3,6 +3,8 @@ const validator = require("validator");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken")
 const Task = require("./tasks")
+const sharp = require("sharp")
+
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -73,7 +75,7 @@ userSchema.statics.findByCredentials = async (email, password) => {
 }
 userSchema.methods.generateAuthToken = async function () {
   const user = this;
-  const token = jwt.sign({ "_id": user.id }, "this is my key token", { "expiresIn": "7 days" },);
+  const token = jwt.sign({ "_id": user.id }, process.env.JWT_SECRET, { "expiresIn": "7 days" },);
 
   user.tokens = user.tokens.concat({ token })
 
@@ -99,7 +101,7 @@ userSchema.pre("save", async function () {
   if (user.isModified("password")) {
     user.password = await bcrypt.hash(user.password, 8);
   }
-});
+ });
 userSchema.pre("remove", async function () {
   const user = this;
   await Task.deleteMany({ "owner": user._id })

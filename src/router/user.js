@@ -3,13 +3,16 @@ const router = express.Router();
 const User = require("../model/users");
 const auth = require("../middleware/auth")
 
+const { sendWelcomeEmail,sendByeEmail } = require("../emails/account");
 const multer = require("multer")
 router.post("/users", async (req, res) => {
   const users = User(req.body);
   try {
-    const token = await users.generateAuthToken();
     await users
       .save();
+    sendWelcomeEmail(users.email, users.name);
+    const token = await users.generateAuthToken();
+
     res.status(201).send({ users, token });
   } catch (e) {
     res.status(400).send(e.message);
@@ -29,8 +32,10 @@ const upload = multer({
     cb(undefined, true)
   }
 })
-router.post("/users/me/avatar", auth, upload.single("avatar"),async (req, res) => {
-  req.user.avatar = req.file.buffer;
+router.post("/users/me/avatar", auth, upload.single("avatar"), async (req, res) => {
+
+  const buffer = await sharp(req.file.buffer).resize({ width: 250, height: 250 }).png().toBuffer()
+  req.user.avatar = buffer;
   await req.user.save();
   res.send();
 }, (error, req, res, next) => {
@@ -43,13 +48,29 @@ router.delete("users/me/avatar", auth, async (req, res) => {
     await req.user.save();
     res.send();
   } catch (e) {
-    res.status(500).json(e)
+    res.status(500).send()
   }
 
 })
 
+router.get("/users/:id/avatar", async (req, res) => {
+
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user || !user.avatar) {
+      throw new Error()
+    }
+
+    res.set("Content-Type", "image/jpg");
+    res.send(user.avatar);
+  } catch (e) {
+    console.log(e)
+    res.status(404).send()
+  }
+
+})
 router.post('/users/login', async (req, res) => {
-  
+
   try {
     const user = await User.findByCredentials(req.body.email, req.body.password);
     const token = await user.generateAuthToken();
@@ -116,7 +137,9 @@ router.get("/users/:id", async (req, res) => {
 
 router.delete("/users/me", auth, async (req, res) => {
   try {
-    await req.user.remove()
+    const user = req.user;
+    await req.user.remove(),
+      sendByeEmail(user.email, user.name);
     res.send(req.user);
   } catch (error) {
     res.status(500).send(error);
